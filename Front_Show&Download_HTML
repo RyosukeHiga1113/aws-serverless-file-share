@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ファイル一覧</title>
+</head>
+<body>
+
+<h2>ファイル一覧</h2>
+<button onclick="login()">ログイン</button>
+<button onclick="loadFiles()">一覧取得</button>
+
+<ul id="list"></ul>
+
+<script>
+const LIST_API = "https://ps1vnvth8h.execute-api.ap-northeast-1.amazonaws.com";
+const DOWNLOAD_API = "https://zsa35nlxl3.execute-api.ap-northeast-1.amazonaws.com";
+
+const DOMAIN = "https://ap-northeast-1wwdgjhwus.auth.ap-northeast-1.amazoncognito.com";
+const CLIENT_ID = "7p1jo2scgqm8l4fsqprqc6cqr";
+
+// ===== ログイン =====
+function login() {
+const redirect = encodeURIComponent("http://localhost:5500/callback.html");
+
+window.location.href =
+`${DOMAIN}/oauth2/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${redirect}&scope=openid+email+profile`;
+}
+
+// ===== JWTデコード =====
+function parseJwt(token) {
+const base64 = token.split('.')[1];
+return JSON.parse(atob(base64));
+}
+
+// ===== 初期処理（自動ログイン）=====
+window.onload = () => {
+const token = localStorage.getItem("token");
+
+if (!token) {
+login(); // 強制ログイン
+}
+};
+
+// ===== 一覧取得 =====
+async function loadFiles() {
+const token = localStorage.getItem("token");
+
+if (!token) {
+alert("ログインしてください");
+return;
+}
+
+// ユーザー取得（JWTから）
+const payload = parseJwt(token);
+const username = payload.username;
+
+const res = await fetch(`${LIST_API}/files`, {
+headers: {
+Authorization: `Bearer ${token}`
+}
+});
+
+const files = await res.json();
+
+const list = document.getElementById("list");
+list.innerHTML = "";
+
+files.forEach(file => {
+const li = document.createElement("li");
+
+li.textContent = file.fileName;
+li.onclick = () => downloadFile(file.fileID);
+
+list.appendChild(li);
+});
+}
+
+// ===== ダウンロード =====
+async function downloadFile(fileID) {
+const token = localStorage.getItem("token");
+
+const res = await fetch(`${DOWNLOAD_API}/files/download`, {
+method: "POST",
+headers: {
+"Content-Type": "application/json",
+Authorization: `Bearer ${token}`
+},
+body: JSON.stringify({ fileID })
+});
+
+const data = await res.json();
+
+window.location.href = data.url;
+}
+</script>
+
+</body>
+</html>
