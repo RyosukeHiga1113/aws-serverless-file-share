@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>S3 Upload Test</title>
+</head>
+<body>
+  <h2>ファイルアップロードテスト</h2>
+
+  <input type="file" id="fileInput" />
+  <button onclick="upload()">アップロード</button>
+
+  <p id="status"></p>
+
+  <script>
+    const API_URL = "https://geo5lgr5d5.execute-api.ap-northeast-1.amazonaws.com/upload-url";
+
+    async function upload() {
+      const file = document.getElementById("fileInput").files[0];
+      const status = document.getElementById("status");
+
+      if (!file) {
+        status.innerText = "ファイルを選択してください";
+        return;
+      }
+
+      status.innerText = "署名URL取得中...";
+
+      // ① 署名URL取得
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type,
+          username: "taro"
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        status.innerText = "URL取得失敗";
+        console.log(data);
+        return;
+      }
+
+      status.innerText = "アップロード中...";
+
+      // ② S3へPUT
+      const uploadRes = await fetch(data.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type
+        },
+        body: file
+      });
+
+      if (uploadRes.ok) {
+        status.innerText = "アップロード成功 🎉";
+      } else {
+        status.innerText = "アップロード失敗";
+      }
+    }
+  </script>
+</body>
+</html>
