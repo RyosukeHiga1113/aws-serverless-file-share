@@ -1,0 +1,64 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
+
+const client = new DynamoDBClient({ region: "ap-northeast-1" });
+const dynamo = DynamoDBDocumentClient.from(client);
+
+const TABLE_NAME = "Documents";
+
+export const handler = async (event) => {
+  try {
+    const username = event.requestContext.authorizer.jwt.claims.username;
+
+    if (!username) {
+      return {
+        statusCode: 400,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+        },
+        body: JSON.stringify({ message: "user is required" }),
+      };
+    }
+
+    const result = await dynamo.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: "user-index",
+        KeyConditionExpression: "#u = :user",
+        ExpressionAttributeNames: {
+          "#u": "user",
+        },
+        ExpressionAttributeValues: {
+          ":user": username, // ←ここ重要（S不要）
+        },
+      })
+    );
+
+    const items = (result.Items || []).map((item) => ({
+      fileID: item.fileID,
+      fileName: item.fileName,
+      createdAt: item.createdAt,
+    }));
+
+    return {
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "http://localhost:5500",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(items),
+    };
+  } catch (error) {
+    console.error("Error:", error);
+
+    return {
+      statusCode: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "http://localhost:5500",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+      },
+      body: JSON.stringify({ message: "Internal Server Error" }),
+    };
+  }
+};
