@@ -8,7 +8,7 @@
 ## 2. システム構成図
 フロントエンドのWebシステムにてログインすることでCognitoから認証・トークン取得する。そしてバックエンドはAPI Gateway + Lambda + S3 + DynamoDBの完全サーバーレス構成を採用しています。
 
-![システム構成図](architecture/Demo-serverless-file-share.png)
+![システム構成図](Demo-serverless-file-share.png)
 
 ## 3. 技術選定の理由（設計思想）
 
@@ -39,22 +39,31 @@
   2. ダウンロード用Lambda側で、トークンのクレームから動的にユーザー名を識別（`event.requestContext.authorizer.jwt.claims.username`）。
   3. DynamoDBから取得したデータの所有者（`item.user`）と、リクエストしたユーザー名が一致するかを検証する**認可制御（owner確認）**を実装。不一致の場合は `403 Forbidden` を返す本番仕様へ改善しました。
 
-## 5. ディレクトリ構造
+## 5. 今後の展望・フェーズ2での実装計画（To-Be）
+
+本システムは、限られた開発期間の中で「コア機能の安定稼働とセキュリティの土台構築」をフェーズ1（現在）として完了しています。新年度からの本番運用、および運用の自動化・さらなるセキュリティ強化に向けて、以下のフェーズ2実装を計画しています。
+
+### ① Amazon Macieによる機密情報（個人情報等）の自動スキャンと監査の自動化
+* **背景：** 社外公開を想定したシステムであるため、ユーザーが誤ってマイナンバー、クレジットカード番号、個人情報（PII）が含まれたファイルをアップロードしてしまうリスクがあります。
+* **対策：** `uploads/` バケットにファイルが保存された際、Amazon Macieの自動データ検出ジョブを連動させます。機密情報が検知された場合は、処理Lambda側で本番バケットへの移動をブロックし、管理者に通知（Amazon SNS経由）する「自動監査パイプライン」を構築予定です。
+
+### ② Amazon CloudFrontの導入によるエンドポイント隠蔽とスパイクアクセス対策
+* **背景：** 現状のフロントエンドはAPI Gatewayへ直接リクエストを送信しており、かつ年度初めなどのアクセス急増（スパイク）に対するキャッシュ戦略が未実装です。
+* **対策：** フロントエンドの配信基盤、およびAPI Gateway/S3の全面にAmazon CloudFrontを配置します。
+  * オリジンアクセス制御（OAC）を設定し、S3への直接アクセスを完全に遮断。
+  * CloudFrontのエッジキャッシュを活用することで、バックエンド（Lambda/DynamoDB）の負荷を大幅に軽減し、年度初めの急激なスパイクアクセス時にも低遅延かつ低コストでスケールする構成へアップデートします。
+
+## 6. ディレクトリ構造
 
 ```text
 aws-serverless-file-share/
 ├── README.md               # 本ドキュメント
-├── architecture/
-│   └── system-diagram.png  # システム構成図画像
-├── frontend/               # フロントエンド（静的コンテンツ）
-│   ├── upload.html         # アップロード用画面
-│   └── download.html       # 閲覧・ダウンロード用画面
-└── backend/                # バックエンド（AWS Lambda関数ソース）
-    ├── generate-upload-url/
-    │   └── index.js        # S3アップロード用の署名付きURL発行
-    ├── s3-file-processor/
-    │   └── index.js        # S3イベント通知トリガー：ファイル編集＆DynamoDBメタデータ保存
-    ├── list-files/
-    │   └── index.js        # DynamoDB GSIを利用したユーザーごとのファイル一覧取得
-    └── download-file/
-        └── index.js        # ダウンロード用署名付きURL発行（JWT認証・所有者チェック付き）
+├── Demo-serverless-file-share.png   # システム構成図画像
+├── Front_Show&Download_HTML             # フロントエンド（静的コンテンツ）
+├── Front_Upload_HTML         # アップロード用画面
+├── Lambda_Download      # ダウンロード用署名付きURL発行（JWT認証・所有者チェック付き）
+├── Lambda_Edit          # S3イベント通知トリガー：ファイル編集＆DynamoDBメタデータ保存    
+├── Lambda_Show          # DynamoDB GSIを利用したユーザーごとのファイル一覧取得
+├── Lambda_Upload        # S3アップロード用の署名付きURL発行
+
+
