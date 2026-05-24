@@ -1,0 +1,104 @@
+import { S3Client, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { randomUUID } from "crypto";
+import path from "path";
+
+const REGION = "ap-northeast-1";
+
+const s3 = new S3Client({ region: REGION });
+const dynamo = new DynamoDBClient({ region: REGION });
+
+const TABLE_NAME = "Documents";
+
+export const handler = async (event) => {
+try {
+const record = event.Records[0];
+const bucket = record.s3.bucket.name;
+const encodedKey = record.s3.object.key;
+
+// デコード
+const key = decodeURIComponent(encodedKey.replace(/\+/g, " "));
+console.log("Original key:", key);
+
+// uploads/配下のみ処理
+if (!key.startsWith("uploads/")) {
+console.log("Skip: not target");
+return;
+}
+
+// パス分解
+const parts = key.split("/");
+const username = parts[1];
+const filename = parts[2];
+
+if (!username || !filename) {
+console.log("Invalid key");
+return;
+}
+
+// ファイル名処理
+const ext = path.extname(filename);
+const nameWithUUID = path.basename(filename, ext);
+
+const nameParts = nameWithUUID.split("-");
+const originalName = nameParts.slice(1).join("-") || nameParts[0];
+
+// 日付
+const now = new Date();
+const yyyy = now.getFullYear();
+const mm = String(now.getMonth() + 1).padStart(2, "0");
+const dd = String(now.getDate()).padStart(2, "0");
+const datePrefix = `${yyyy}${mm}${dd}`;
+
+const newKey = `documents/${datePrefix}-${username}-${originalName}${ext}`;
+console.log("New key:", newKey);
+
+// fileId生成（DB用）
+const fileId = randomUUID();
+
+// ① コピー（S3移動）
+await s3.send(new CopyObjectCommand({
+Bucket: bucket,
+CopySource: `${bucket}/${key}`,
+Key: newKey,
+}));
+
+// ② 削除（元ファイル）
+await s3.send(new DeleteObjectCommand({
+Bucket: bucket,
+Key: key,
+}));
+
+console.log("Move success");
+
+// ③ DynamoDB保存
+try {
+    const res = await dynamo.send(new PutItemCommand({
+      TableName: TABLE_NAME,
+      Item: {
+        fileID: { S: fileId },
+        s3Key: { S: newKey },
+        fileName: { S: originalName + ext },
+        user: { S: username },
+        createdAt: { S: new Date().toISOString() }
+      }
+    }));
+    console.log("DDB SUCCESS:", res);
+  } catch (err) {
+    console.error("DDB ERROR:", err);
+  }
+
+return {
+statusCode: 200,
+body: JSON.stringify({
+message: "success",
+fileId,
+s3Key: newKey
+})
+};
+
+} catch (error) {
+console.error("Error:", error);
+throw error;
+}
+};
