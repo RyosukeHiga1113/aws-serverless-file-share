@@ -8,7 +8,7 @@
 ## 2. システム構成図
 フロントエンドのWebシステムにてログインすることでCognitoから認証・トークン取得する。そしてバックエンドはAPI Gateway + Lambda + S3 + DynamoDBの完全サーバーレス構成を採用しています。
 
-![システム構成図](Demo-serverless-file-share.png)
+![システム構成図]()
 
 ## 3. 技術選定の理由（設計思想）
 
